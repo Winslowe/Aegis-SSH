@@ -1,7 +1,29 @@
+# --- Python Standartları ---
 __pycache__/
 *.py[cod]
 *$py.class
-.venv/
+
+# --- Sanal Ortamlar (Virtual Environments) ---
 venv/
 env/
 .env
+
+# --- IDE ve İşletim Sistemi Kalıntıları ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# --- Aegis-SSH Projesine Özel (Hassas Veriler) ---
+# Yarım kalan oturumları tutan JSON dosyası (Github'a gitmemeli)
+session.json
+
+# İçinde bulunduğunuz açık portlar ve kırılan şifreleri barındıran Raporlar
+*.html
+
+# Şifre listelerinin (Wordlists) kazara yüklenmesini engeller
+# (requirements.txt hariç tutulmuştur)
+a.txt
+wordlist*.txt
+passwords.txt
+*.dic
