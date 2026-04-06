@@ -23,13 +23,25 @@
 
 Aegis-SSH, asenkron I/O operasyonlarını tek bir thread üzerinde "Event Loop" mimarisiyle yönetir. Tıpkı Rust dilindeki `tokio::sync::Semaphore` yapısına benzer bir şekilde `asyncio.Semaphore` kullanılarak, hedefin kapasitesine göre eşzamanlı limitler (Rate-limiting) konulur. Bu mimari sayesinde klasik çoklu-iş parçacıklı (Multi-threaded) scriptlerdeki "Socket Exhaustion" işletim sistemi kilitlenmeleri önlenir. Arka planda SSH yetki kanalları paralelleştirilir.
 
+## 🎯 İncelenen Zafiyet: Zayıf SSH Yapılandırması ve Brute-Force
+
+Bu projede, sunucularda en sık karşılaşılan **zayıf parola politikaları** ve **korumasız SSH servisi** zafiyetleri incelenmiştir. Sistem yöneticilerinin varsayılan ayarları değiştirmemesi veya zayıf şifreler kullanması, saldırganların kaba kuvvet (brute-force) yöntemleriyle sistemde yetkisiz "root" erişimi sağlamasına yol açmaktadır. Aegis-SSH, kurumsal ağlardaki bu yapılandırma hatalarını tespit etmek ve görünür kılmak için tasarlanmıştır.
+
+## 🛡️ Zafiyet Çözümü ve Savunma Stratejileri
+
+Aegis-SSH gibi araçların başarılı olmasını engellemek ve tespit edilen zafiyetleri çözmek için aşağıdaki güvenlik adımları uygulanmalıdır:
+
+- **Anahtar Tabanlı Doğrulama (Key-Based Authentication):** SSH yapılandırmasında parola ile giriş tamamen devre dışı bırakılmalı (`PasswordAuthentication no`), bunun yerine kriptografik anahtarlar (Ed25519 / RSA) kullanılmalıdır.
+- **Dinamik Engelleme (Fail2Ban/DenyHosts):** Art arda yapılan başarısız giriş denemeleri tespit edilerek IP adresi güvenlik duvarı seviyesinde otomatik olarak engellenmelidir.
+- **Port Değiştirme ve Port Knocking:** Varsayılan "22" portu değiştirilmeli veya servise erişim sadece belirli bir IP havuzu ile sınırlandırılmalıdır.
+
 ## 🚀 Kurulum
 
 Sisteminizde Python 3.8 veya üzeri bir sürüm kurulu olmalıdır. Klonlama ve ortamı hazırlama adımları:
 
 ```bash
 # Depoyu klonlayın
-git clone https://github.com/KullaniciAdiniz/Aegis-SSH.git
+git clone [https://github.com/KullaniciAdiniz/Aegis-SSH.git](https://github.com/KullaniciAdiniz/Aegis-SSH.git)
 cd Aegis-SSH
 
 # Gerekli bağımlılıkları yükleyin
@@ -37,17 +49,3 @@ pip install -r requirements.txt
 
 # Aracı çalıştırın
 python main.py
-```
-
-## 📋 Kullanım
-
-Aracı çalıştırdığınızda sizi CLI (Komut Satırı) tabanlı interaktif bir menü karşılayacaktır. Adımlar kullanıcı dostu bir şekilde sorulur:
-
-1. **Mod Seçimi:** Hızlı, agresif ve maksimum güce dayalı "Aggressive Mode" mu, yavaş ve IDS atlatma odaklı "Evasion Mode" mu, yoksa yarıda kalmış bir denetimi sürdürmek için "Session Resume" mi seçeceğinizi belirtin.
-2. **Hedef Belirleme:** Hedefinizi `192.168.1.1` gibi tek IP, `ssh.domain.com` gibi alan adı veya `10.0.0.0/24` formatında Subnet olarak girin.
-3. **Kullanıcı ve Liste:** Denenecek varsayılan kullanıcı adını (örn: `root`) ve parola Listenizi de (`wordlist.txt`) belirttikten sonra arkanıza yaslanın. 
-4. **Discord Bildirimi:** Opsiyonel Webhook URL girerek sonuçları telefonunuzdan (Discord üzerinden) canlı olarak takip edebilirsiniz.
-
-## ⚠️ Yasal Uyarı
-
-*Bu araç sadece sistem yöneticilerinin, siber güvenlik uzmanlarının (pentesters) ve yetkilendirilmiş personellerin eğitim, denetim veya araştırma amacıyla kullanması için geliştirilmiştir. Hedef alınan ağlarda veya sistemlerde açık ve yazılı (yetkili) bir izniniz olmadan aracı kullanmak veya denemek yasa dışıdır. Geliştiriciler aracın yanlış veya yetkisiz kullanımından doğabilecek zararlardan sorumlu tutulamaz.*
