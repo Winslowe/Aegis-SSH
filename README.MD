@@ -2,7 +2,6 @@
 **Program:** Bilişim Güvenliği Teknolojisi  
 **Ders:** Sızma Testi (Penetrasyon)  
 **Öğrenci:** Muhammet Eren Çapan  
-**Eğitmen:** [Hocanın Adını Yazınız]  
 **Proje Adı:** Aegis-SSH Auditing Suite  
 
 ---
