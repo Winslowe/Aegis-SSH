@@ -1,3 +1,12 @@
+# 🏫 İSTİNYE ÜNİVERSİTESİ - MESLEK YÜKSEKOKULU
+**Program:** Bilişim Güvenliği Teknolojisi  
+**Ders:** Sızma Testi (Penetrasyon)  
+**Öğrenci:** Muhammet Eren Çapan  
+**Eğitmen:** [Hocanın Adını Yazınız]  
+**Proje Adı:** Aegis-SSH Auditing Suite  
+
+---
+
 <div align="center">
   <h1>🛡️ Aegis-SSH Auditing Suite v5.0 (Pro)</h1>
   <p>Kurumsal ağlarda ve dışa açık sunucularda zayıf SSH yapılandırmalarını tespit etmek için geliştirilmiş yüksek performanslı Asenkron Sızma Testi ve Güvenlik Denetim (Auditing) Aracı.</p>
@@ -53,5 +62,5 @@ cd Aegis-SSH
 # Gerekli bağımlılıkları yükleyin
 pip install -r requirements.txt
 
-# Aracı profesyonel src yapısıyla çalıştırın
+# Aracı profesyonel src dizini yapısıyla çalıştırın
 python src/main.py
