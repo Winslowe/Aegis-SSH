@@ -1,4 +1,3 @@
-
 <div align="center">
   <h1>🛡️ Aegis-SSH Auditing Suite v5.0 (Pro)</h1>
   <p>Kurumsal ağlarda ve dışa açık sunucularda zayıf SSH yapılandırmalarını tespit etmek için geliştirilmiş yüksek performanslı Asenkron Sızma Testi ve Güvenlik Denetim (Auditing) Aracı.</p>
@@ -12,39 +11,37 @@
 
 ## 📖 İçindekiler
 * [✨ Temel Özellikler](#-temel-özellikler)
-* [🛠️ Mimari Yapı ve Karşılaştırma](#️-mimari-yapı-ve-karşılaştırma)
+* [🛠️ Mimari Yapı](#️-mimari-yapı-ve-karşılaştırma)
 * [🎯 İncelenen Zafiyet: SSH Brute-Force](#-incelenen-zafiyet-zayıf-ssh-yapılandırması-ve-brute-force)
-* [🛡️ Zafiyet Çözümü ve Savunma Stratejileri](#️-zafiyet-çözümü-ve-savunma-stratejileri)
+* [🛡️ Zafiyet Çözümü ve Savunma](#️-zafiyet-çözümü-ve-savunma-stratejileri)
 * [🚀 Kurulum ve Çalıştırma](#-kurulum)
-* [💬 Discord Webhook Entegrasyonu](#-discord-webhook-entegrasyonu)
+* [💬 Discord Webhook](#-discord-webhook-entegrasyonu)
 * [⚠️ Yasal Uyarı](#️-yasal-uyarı)
 
 ---
 
 ## ✨ Temel Özellikler
 
-- ⚡ **Asenkron İletişim:** Python'un `asyncio` kütüphanesi ve `Semaphore` mekanizması sayesinde sistem kaynaklarını tüketmeden aynı anda onlarca bağlantı açabilir.
-- 🌐 **Alt Ağ (Subnet) Taraması:** `192.168.1.0/24` gibi koca bir alt ağı otomatik çözümleyerek açık SSH portlarını saniyeler içinde tarar.
-- 🥷 **Gelişmiş Evasion (Kaçınma):** Güvenlik duvarlarını atlatabilmek için dinamik *Jitter* (Zamanlama manipülasyonu) ve *Client Fingerprint Spoofing* özelliklerine sahiptir.
-- 📊 **HTML Raporlama:** Tarama bittiğinde zafiyet durumunu içeren okunaklı bir `.html` raporu otomatik olarak oluşturulur.
-- 💾 **Oturum Yönetimi:** Beklenmedik kesintilerde süreç `session.json` dosyasına kaydedilir ve kaldığı yerden devam eder.
+- ⚡ **Asenkron İletişim:** `asyncio` ve `Semaphore` mekanizması ile sistem kaynaklarını tüketmeden eşzamanlı onlarca bağlantı yönetimi.
+- 🌐 **Geniş Ağ Desteği:** Tek IP, Domain veya `192.168.1.0/24` gibi Subnet tarama kabiliyeti.
+- 🥷 **Gelişmiş Evasion:** IDS/IPS sistemlerini atlatmak için dinamik *Jitter* ve *Client Fingerprint Spoofing*.
+- 📊 **HTML Raporlama:** Her tarama sonunda zafiyet durumunu belgeleyen otomatik `.html` raporu.
+- 💾 **Session Resume:** Kesintiye uğrayan taramaları `session.json` üzerinden kaldığı yerden sürdürme.
 
 ## 🛠️ Mimari Yapı ve Karşılaştırma
 
-Aegis-SSH, asenkron I/O operasyonlarını tek bir thread üzerinde **"Event Loop"** mimarisiyle yönetir. Klasik çoklu-iş parçacıklı (Multi-threaded) scriptlerin aksine, "Socket Exhaustion" hatalarını önlemek için `asyncio.Semaphore` kullanarak hedefin kapasitesine göre eşzamanlılık sınırı koyar.
-
-
+Aegis-SSH, asenkron I/O operasyonlarını tek bir thread üzerinde **"Event Loop"** mimarisiyle yönetir. Klasik çoklu-iş parçacıklı (Multi-threaded) scriptlerin aksine, "Socket Exhaustion" hatalarını önlemek için `asyncio.Semaphore` kullanarak rate-limiting uygular. Bu sayede tarama yapılan sistemin stabilitesi korunur.
 
 ## 🎯 İncelenen Zafiyet: Zayıf SSH Yapılandırması ve Brute-Force
 
-Bu projede, sunucularda en sık karşılaşılan **zayıf parola politikaları** incelenmiştir. Sistem yöneticilerinin varsayılan ayarları değiştirmemesi veya zayıf şifreler kullanması, saldırganların kaba kuvvet (brute-force) yöntemleriyle sistemde yetkisiz "root" erişimi sağlamasına yol açmaktadır. Aegis-SSH, bu riskleri kurumlar için görünür kılar.
+Bu projede, kurumsal sunucularda en sık rastlanan **zayıf parola politikaları** ve **varsayılan yapılandırma hataları** incelenmiştir. Saldırganların kaba kuvvet yöntemleriyle "root" erişimi sağlamasına olanak tanıyan bu açıklar, Aegis-SSH ile simüle edilerek sistem yöneticilerine raporlanır.
 
 ## 🛡️ Zafiyet Çözümü ve Savunma Stratejileri
 
-Aegis-SSH tarafından tespit edilen zafiyetleri önlemek için şu adımlar kritiktir:
-1. **Anahtar Tabanlı Doğrulama:** Parola ile giriş tamamen kapatılmalıdır (`PasswordAuthentication no`).
-2. **Fail2Ban Kullanımı:** Arda arda gelen hatalı denemeler firewall seviyesinde engellenmelidir.
-3. **Port Değiştirme:** Varsayılan 22 portu yerine alternatif portlar tercih edilmelidir.
+Tespit edilen zafiyetlerin giderilmesi için şu güvenlik önlemleri uygulanmalıdır:
+1. **Anahtar Tabanlı Doğrulama:** Parola ile girişler kapatılmalıdır (`PasswordAuthentication no`).
+2. **Fail2Ban:** Hatalı deneme yapan IP'lerin otomatik bloklanması sağlanmalıdır.
+3. **Port Knocking:** SSH portu varsayılan 22 değerinden farklı bir değere taşınmalıdır.
 
 ## 🚀 Kurulum
 
@@ -56,12 +53,5 @@ cd Aegis-SSH
 # Gerekli bağımlılıkları yükleyin
 pip install -r requirements.txt
 
-# Aracı çalıştırın (Profesyonel src dizini yapısı)
+# Aracı profesyonel src yapısıyla çalıştırın
 python src/main.py
-### 🏫 İSTİNYE ÜNİVERSİTESİ - MESLEK YÜKSEKOKULU
-**Program:** Bilişim Güvenliği Teknolojisi  
-**Ders:** Sızma Testi (Penetrasyon)  
-**Öğrenci:** Muhammet Eren Çapan  
-**Eğitmen:** [Hocanın Adı]  
-**Proje Tarihi:** Mart - Nisan 2026
-
