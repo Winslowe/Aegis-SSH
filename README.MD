@@ -1,7 +1,3 @@
-# 🏫 İSTİNYE ÜNİVERSİTESİ - MESLEK YÜKSEKOKULU
-**Program:** Bilişim Güvenliği Teknolojisi  
-**Ders:** Sızma Testi (Penetrasyon)  
-**Öğrenci:** Muhammet Eren Çapan  
 **Proje Adı:** Aegis-SSH Auditing Suite  
 
 ---
